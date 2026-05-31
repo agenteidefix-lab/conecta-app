@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Conecta",
+    "slug": "conecta-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "conecta",
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
