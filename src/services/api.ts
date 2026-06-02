@@ -14,7 +14,7 @@ import type { MessageRequest, MessageResponse, HealthResponse } from '../types/a
 export class BridgeError extends Error {
   constructor(
     message: string,
-    public readonly code: 'TIMEOUT' | 'UNAUTHORIZED' | 'SERVER_ERROR' | 'NETWORK' | 'UNKNOWN',
+    public readonly code: 'TIMEOUT' | 'UNAUTHORIZED' | 'SERVER_ERROR' | 'NETWORK' | 'BUSY' | 'UNKNOWN',
   ) {
     super(message);
     this.name = 'BridgeError';
@@ -85,6 +85,10 @@ function classifyError(err: unknown): BridgeError {
     return new BridgeError('Error de autenticación con el bridge.', 'UNAUTHORIZED');
   }
 
+  if (msg.includes('503') && msg.includes('agent_busy')) {
+    return new BridgeError('Idefix está ocupado ahora. Inténtalo en unos segundos.', 'BUSY');
+  }
+
   if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
     return new BridgeError('El bridge tuvo un error interno.', 'SERVER_ERROR');
   }
@@ -132,6 +136,12 @@ async function realSendMessage(request: MessageRequest): Promise<MessageResponse
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
     console.warn(`[conecta] bridge error: HTTP ${response.status} - ${errBody.error || response.statusText}`);
+
+    // 503 agent_busy — Idefix está ocupado
+    if (response.status === 503 && errBody.code === 'agent_busy') {
+      throw new BridgeError('Idefix está ocupado ahora. Inténtalo en unos segundos.', 'BUSY');
+    }
+
     throw new BridgeError(
       errBody.error || `Error del bridge (${response.status}).`,
       response.status >= 500 ? 'SERVER_ERROR' : 'UNKNOWN',
