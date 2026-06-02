@@ -18,6 +18,9 @@ export const IDEFIX_CONFIG = {
   // Timeout de conexión (ms)
   connectionTimeout: 5000,
 
+  // Timeout para peticiones al bridge (ms)
+  bridgeRequestTimeout: 15000,
+
   // Intervalo de healthcheck (ms)
   healthCheckInterval: 30000,
 

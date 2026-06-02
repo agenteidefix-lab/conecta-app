@@ -11,6 +11,7 @@ export const TIMEOUTS = {
   connection: IDEFIX_CONFIG.connectionTimeout,
   healthCheck: IDEFIX_CONFIG.healthCheckInterval,
   mockDelay: IDEFIX_CONFIG.mockDelay,
+  bridgeRequest: IDEFIX_CONFIG.bridgeRequestTimeout,
 } as const;
 
 export const FEATURE_FLAGS = {

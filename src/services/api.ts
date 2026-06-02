@@ -1,13 +1,25 @@
 // Servicio de comunicación con el bridge de Idefix
 //
 // Modo mock (por defecto): respuestas simuladas con retardo.
-// Modo real: HTTP POST al bridge de Idefix (endpoint /api/conecta/message).
+// Modo real: HTTP POST al bridge de Idefix con timeout y errores tipificados.
 //
 // Fallback automático: si falta bridgeSecret, vuelve a mock sin romper la app.
 
 import { IDEFIX_CONFIG } from '../config/idefix';
 import { FEATURE_FLAGS, TIMEOUTS } from '../constants';
 import type { MessageRequest, MessageResponse, HealthResponse } from '../types/api';
+
+// ── Tipos de error ─────────────────────────────────────────────────────────
+
+export class BridgeError extends Error {
+  constructor(
+    message: string,
+    public readonly code: 'TIMEOUT' | 'UNAUTHORIZED' | 'SERVER_ERROR' | 'NETWORK' | 'UNKNOWN',
+  ) {
+    super(message);
+    this.name = 'BridgeError';
+  }
+}
 
 // ── Respuestas simuladas (v0.1) ────────────────────────────────────────────
 
@@ -54,29 +66,79 @@ function shouldUseRealApi(): boolean {
   return !FEATURE_FLAGS.useMockApi && IDEFIX_CONFIG.bridgeSecret.length > 0;
 }
 
+function classifyError(err: unknown): BridgeError {
+  if (err instanceof BridgeError) return err;
+
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (err && typeof err === 'object' && 'name' in err) {
+    const name = (err as Error).name;
+    if (name === 'AbortError') {
+      return new BridgeError('El bridge no respondió a tiempo. Inténtalo de nuevo.', 'TIMEOUT');
+    }
+    if (name === 'TypeError' && (msg.includes('fetch') || msg.includes('Network') || msg.includes('network'))) {
+      return new BridgeError('No se pudo conectar con el bridge.', 'NETWORK');
+    }
+  }
+
+  if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('Token')) {
+    return new BridgeError('Error de autenticación con el bridge.', 'UNAUTHORIZED');
+  }
+
+  if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
+    return new BridgeError('El bridge tuvo un error interno.', 'SERVER_ERROR');
+  }
+
+  return new BridgeError('Error inesperado. Inténtalo de nuevo.', 'UNKNOWN');
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function realSendMessage(request: MessageRequest): Promise<MessageResponse> {
   const url = `${IDEFIX_CONFIG.bridgeUrl}/api/conecta/message`;
-  console.log(`[conecta] sendMessage: real, URL=${url}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${IDEFIX_CONFIG.bridgeSecret}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text: request.text }),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${IDEFIX_CONFIG.bridgeSecret}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: request.text }),
+      },
+      TIMEOUTS.bridgeRequest,
+    );
+  } catch (err) {
+    throw classifyError(err);
+  }
 
-  console.log(`[conecta] sendMessage: HTTP ${response.status}`);
+  if (response.status === 401) {
+    throw new BridgeError('Error de autenticación con el bridge.', 'UNAUTHORIZED');
+  }
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    console.log(`[conecta] sendMessage: fallo - ${err.error || response.statusText}`);
-    throw new Error(err.error || `Bridge error ${response.status}`);
+    const errBody = await response.json().catch(() => ({}));
+    console.warn(`[conecta] bridge error: HTTP ${response.status} - ${errBody.error || response.statusText}`);
+    throw new BridgeError(
+      errBody.error || `Error del bridge (${response.status}).`,
+      response.status >= 500 ? 'SERVER_ERROR' : 'UNKNOWN',
+    );
   }
 
   const data = await response.json();
-  console.log(`[conecta] sendMessage: OK - "${data.response?.slice(0, 60)}..."`);
   return {
     text: data.response,
     timestamp: data.timestamp,
@@ -85,31 +147,26 @@ async function realSendMessage(request: MessageRequest): Promise<MessageResponse
 
 async function realHealthCheck(): Promise<HealthResponse> {
   const url = `${IDEFIX_CONFIG.bridgeUrl}/health`;
-  console.log(`[conecta] healthCheck: real, URL=${url}`);
 
-  const response = await fetch(url);
-
-  console.log(`[conecta] healthCheck: HTTP ${response.status}`);
-
-  if (!response.ok) {
-    console.log(`[conecta] healthCheck: fallo - ${response.statusText}`);
+  try {
+    const response = await fetchWithTimeout(url, { method: 'GET' }, 5000);
+    if (!response.ok) {
+      return { status: 'error' };
+    }
+    const data = await response.json();
+    return {
+      status: data.status === 'running' ? 'ok' : 'error',
+      version: data.service ? `bridge-${data.service}` : undefined,
+      uptime: undefined,
+    };
+  } catch {
     return { status: 'error' };
   }
-
-  const data = await response.json();
-  console.log(`[conecta] healthCheck: OK - status=${data.status}`);
-  return {
-    status: data.status === 'running' ? 'ok' : 'error',
-    version: data.service ? `bridge-${data.service}` : undefined,
-    uptime: undefined,
-  };
 }
 
 // ── API pública ────────────────────────────────────────────────────────────
 
 export async function sendMessage(request: MessageRequest): Promise<MessageResponse> {
-  const mode = shouldUseRealApi() ? 'real' : 'mock';
-  console.log(`[conecta] sendMessage: modo=${mode}, useMockApi=${FEATURE_FLAGS.useMockApi}, hasSecret=${IDEFIX_CONFIG.bridgeSecret.length > 0}`);
   if (shouldUseRealApi()) {
     return realSendMessage(request);
   }
@@ -117,8 +174,6 @@ export async function sendMessage(request: MessageRequest): Promise<MessageRespo
 }
 
 export async function healthCheck(): Promise<HealthResponse> {
-  const mode = shouldUseRealApi() ? 'real' : 'mock';
-  console.log(`[conecta] healthCheck: modo=${mode}, useMockApi=${FEATURE_FLAGS.useMockApi}, hasSecret=${IDEFIX_CONFIG.bridgeSecret.length > 0}`);
   if (shouldUseRealApi()) {
     return realHealthCheck();
   }

@@ -1,12 +1,18 @@
 // Hook de conversación con Idefix
 //
 // Orquesta: input del usuario → envío al bridge → respuesta → store.
-// En v0.1: el input es texto simulado desde TalkButton.
-// En v1.0: el input puede ser audio transcrito o texto directo.
+// Los errores tipificados se traducen a mensajes visibles según el código.
 
 import { useCallback } from 'react';
 import { useConversationStore } from '../stores/conversationStore';
-import { sendMessage } from '../services/api';
+import { sendMessage, BridgeError } from '../services/api';
+
+function userFacingError(err: unknown): string {
+  if (err instanceof BridgeError) {
+    return err.message;
+  }
+  return 'Error de conexión. Inténtalo de nuevo.';
+}
 
 export function useConversation() {
   const addMessage = useConversationStore((s) => s.addMessage);
@@ -21,15 +27,15 @@ export function useConversation() {
       // Añadir mensaje del usuario
       addMessage({ role: 'user', text: text.trim() });
 
-      // Enviar a Idefix (mock en v0.1)
+      // Enviar a Idefix
       setProcessing(true);
       try {
         const response = await sendMessage({ text: text.trim() });
         addMessage({ role: 'assistant', text: response.text });
-      } catch {
+      } catch (err) {
         addMessage({
           role: 'assistant',
-          text: 'Error de conexión. Inténtalo de nuevo.',
+          text: userFacingError(err),
         });
       } finally {
         setProcessing(false);
@@ -47,13 +53,5 @@ export function useConversation() {
     isProcessing,
     sendUserMessage,
     clearConversation,
-    // Preparado para futuro:
-    // sendAudioMessage: (blob: Blob) => Promise<void>
-    // retryLastMessage: () => Promise<void>
   };
 }
-
-// En v1.0 este hook también orquestará:
-// - Envío de audio (transcripción → texto → API → audio de vuelta)
-// - Streaming de respuestas (WebSocket para respuestas parciales)
-// - Confirmación de lectura de respuestas de Idefix
