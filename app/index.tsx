@@ -8,8 +8,8 @@
 // Los hooks orquestan la lógica, los stores contienen el estado,
 // los componentes son solo presentacionales.
 
-import React, { useCallback } from 'react';
-import { View, StyleSheet, SafeAreaView, Text } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { View, StyleSheet, SafeAreaView, Text, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 import { ConnectionIndicator } from '../src/components/ConnectionIndicator';
@@ -19,23 +19,21 @@ import { ResponseArea } from '../src/components/ResponseArea';
 import { useConnection } from '../src/hooks/useConnection';
 import { useConversation } from '../src/hooks/useConversation';
 
-const MOCK_USER_INPUTS = [
-  'Hola Idefix',
-  '¿Qué tiempo hace hoy?',
-  'Recuérdame comprar leche',
-  'Apaga la luz del salón',
-];
-
 export default function HomeScreen() {
   const { connectionStatus } = useConnection();
   const { messages, isProcessing, sendUserMessage } = useConversation();
+  const [inputText, setInputText] = useState('');
+  const inputRef = useRef<TextInput>(null);
 
   const handleTalkPress = useCallback(() => {
-    // En v0.1: envía un texto simulado aleatorio
-    // En v1.0: aquí se activará la grabación de voz
-    const mockText = MOCK_USER_INPUTS[Math.floor(Math.random() * MOCK_USER_INPUTS.length)];
-    sendUserMessage(mockText);
-  }, [sendUserMessage]);
+    const text = inputText.trim();
+    if (!text) return;
+    sendUserMessage(text);
+    setInputText('');
+    inputRef.current?.focus();
+  }, [inputText, sendUserMessage]);
+
+  const canSend = inputText.trim().length > 0 && !isProcessing && connectionStatus === 'connected';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -50,15 +48,29 @@ export default function HomeScreen() {
       {/* Área de respuestas */}
       <ResponseArea messages={messages} />
 
-      {/* Botón hablar + indicador de procesamiento */}
+      {/* Input + botón enviar */}
       <View style={styles.footer}>
         {isProcessing && (
           <Text style={styles.processingText}>Idefix está pensando…</Text>
         )}
-        <TalkButton
-          onPress={handleTalkPress}
-          disabled={isProcessing || connectionStatus === 'disconnected'}
-        />
+        <View style={styles.inputRow}>
+          <TextInput
+            ref={inputRef}
+            style={styles.textInput}
+            placeholder="Escribe un mensaje…"
+            placeholderTextColor="#A2A2A2"
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleTalkPress}
+            returnKeyType="send"
+            editable={!isProcessing}
+          />
+          <TalkButton
+            onPress={handleTalkPress}
+            disabled={!canSend}
+            label="Enviar"
+          />
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -85,11 +97,26 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: '#E9E9EB',
     gap: 8,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+  },
+  textInput: {
+    flex: 1,
+    height: 44,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    color: '#1C1C1E',
   },
   processingText: {
     fontSize: 13,

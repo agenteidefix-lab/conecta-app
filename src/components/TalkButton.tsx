@@ -35,26 +35,19 @@ export function TalkButton({ onPress, disabled, label = 'Hablar' }: TalkButtonPr
 
 const styles = StyleSheet.create({
   button: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    height: 44,
+    paddingHorizontal: 20,
+    borderRadius: 22,
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'center',
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   buttonDisabled: {
     backgroundColor: '#A2A2A2',
-    shadowOpacity: 0.1,
   },
   label: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   labelDisabled: {
