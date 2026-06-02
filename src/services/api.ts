@@ -14,7 +14,7 @@ import type { MessageRequest, MessageResponse, HealthResponse } from '../types/a
 export class BridgeError extends Error {
   constructor(
     message: string,
-    public readonly code: 'TIMEOUT' | 'UNAUTHORIZED' | 'SERVER_ERROR' | 'NETWORK' | 'BUSY' | 'UNKNOWN',
+    public readonly code: 'TIMEOUT' | 'UNAUTHORIZED' | 'SERVER_ERROR' | 'NETWORK' | 'UNKNOWN',
   ) {
     super(message);
     this.name = 'BridgeError';
@@ -74,7 +74,7 @@ function classifyError(err: unknown): BridgeError {
   if (err && typeof err === 'object' && 'name' in err) {
     const name = (err as Error).name;
     if (name === 'AbortError') {
-      return new BridgeError('El bridge no respondió a tiempo. Inténtalo de nuevo.', 'TIMEOUT');
+      return new BridgeError('Idefix está tardando más de lo normal. Inténtalo de nuevo.', 'TIMEOUT');
     }
     if (name === 'TypeError' && (msg.includes('fetch') || msg.includes('Network') || msg.includes('network'))) {
       return new BridgeError('No se pudo conectar con el bridge.', 'NETWORK');
@@ -83,10 +83,6 @@ function classifyError(err: unknown): BridgeError {
 
   if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('Token')) {
     return new BridgeError('Error de autenticación con el bridge.', 'UNAUTHORIZED');
-  }
-
-  if (msg.includes('503') && msg.includes('agent_busy')) {
-    return new BridgeError('Idefix está ocupado ahora. Inténtalo en unos segundos.', 'BUSY');
   }
 
   if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
@@ -136,11 +132,6 @@ async function realSendMessage(request: MessageRequest): Promise<MessageResponse
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
     console.warn(`[conecta] bridge error: HTTP ${response.status} - ${errBody.error || response.statusText}`);
-
-    // 503 agent_busy — Idefix está ocupado
-    if (response.status === 503 && errBody.code === 'agent_busy') {
-      throw new BridgeError('Idefix está ocupado ahora. Inténtalo en unos segundos.', 'BUSY');
-    }
 
     throw new BridgeError(
       errBody.error || `Error del bridge (${response.status}).`,
