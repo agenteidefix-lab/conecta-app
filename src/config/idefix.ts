@@ -1,13 +1,19 @@
 // Configuración del bridge con Idefix
-// Esta app NO habla directamente con OpenClaw.
-// Habla con Idefix a través de un bridge (API/bridge intermedio).
 //
-// En v0.1 todo es mock. Cuando llegue la conexión real,
-// solo hay que cambiar estos valores y la implementación en services/api.ts.
+// Las variables EXPO_PUBLIC_* se resuelven desde .env.local en desarrollo
+// (ver .env.example). Si faltan, se usan los valores por defecto (mock).
+//
+// .env.local está en .gitignore — nunca subir secretos al repo.
 
 export const IDEFIX_CONFIG = {
-  // Bridge URL (mock en v0.1)
-  bridgeUrl: 'http://localhost:3000/api/conecta',
+  // Bridge URL (desde env o valor por defecto)
+  bridgeUrl: process.env.EXPO_PUBLIC_CONECTA_BRIDGE_URL || 'http://localhost:3000/api/conecta',
+
+  // Secreto del bridge (desde env o vacío — si vacío, fallback a mock)
+  bridgeSecret: process.env.EXPO_PUBLIC_CONECTA_BRIDGE_SECRET || '',
+
+  // Flag mock: desde env, por defecto true
+  useMockApi: process.env.EXPO_PUBLIC_CONECTA_USE_MOCK !== 'false',
 
   // Timeout de conexión (ms)
   connectionTimeout: 5000,
@@ -23,10 +29,4 @@ export const IDEFIX_CONFIG = {
 
   // Nombre visible del asistente
   assistantName: 'Idefix',
-
-  // Preparado para futuro:
-  // apiKey?: string;
-  // userId?: string;
-  // reconnectAttempts?: number;
-  // audioSampleRate?: number;
 } as const;

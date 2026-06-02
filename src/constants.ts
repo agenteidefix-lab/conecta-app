@@ -14,9 +14,10 @@ export const TIMEOUTS = {
 } as const;
 
 export const FEATURE_FLAGS = {
-  // En v0.1 todo mock. Cambiar a false cuando haya backend real.
-  useMockApi: true,
-  useMockConnection: true,
+  // Mock activo por defecto. Cambiar via EXPO_PUBLIC_CONECTA_USE_MOCK=false
+  // en .env.local, o desde IDEFIX_CONFIG.useMockApi.
+  useMockApi: IDEFIX_CONFIG.useMockApi,
+  useMockConnection: IDEFIX_CONFIG.useMockApi,
 
   // Preparado para fases futuras:
   enableVoiceInput: false,
